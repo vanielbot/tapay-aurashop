@@ -66,9 +66,9 @@ try {
             ];
             foreach ($transactions as &$tx) {
                 $amt = (float)$tx['amount'];
-                if (in_array($tx['type'], ['TOPUP', 'TRANSFER_IN', 'REFUND', 'CASHBACK'])) {
+                if (in_array($tx['type'], ['TOPUP', 'TRANSFER_IN', 'REFUND', 'CASHBACK', 'VIRTUAL_TOPUP', 'VIRTUAL_REFUND'])) {
                     $stats['total_in'] += $amt;
-                } elseif (!in_array($tx['type'], ['VIRTUAL_TOPUP', 'VIRTUAL_PAYMENT', 'VIRTUAL_REFUND'])) {
+                } else {
                     $stats['total_out'] += $amt;
                 }
                 if ($tx['type'] === 'REFUND') {
@@ -338,12 +338,12 @@ try {
         case 'add_virtual_money': {
             $amount = (float)($input['amount'] ?? 5000000);
             if ($amount < 10000 || $amount > 100000000) {
-                jsonResponse(['success' => false, 'message' => 'Số tiền ảo mỗi lần cộng từ 10.000đ đến 100.000.000đ'], 400);
+                jsonResponse(['success' => false, 'message' => 'Số tiền cộng mỗi lần từ 10.000đ đến 100.000.000đ'], 400);
             }
 
             $pdo->beginTransaction();
 
-            $stmt = $pdo->prepare("SELECT id, COALESCE(virtual_balance, 0) as virtual_balance, wallet_number FROM wallets WHERE user_id = ?");
+            $stmt = $pdo->prepare("SELECT id, balance, wallet_number FROM wallets WHERE user_id = ?");
             $stmt->execute([$userId]);
             $wallet = $stmt->fetch();
 
@@ -352,15 +352,15 @@ try {
                 jsonResponse(['success' => false, 'message' => 'Không tìm thấy ví người dùng'], 404);
             }
 
-            $before = (float)$wallet['virtual_balance'];
+            $before = (float)$wallet['balance'];
             $after = $before + $amount;
 
-            $upd = $pdo->prepare("UPDATE wallets SET virtual_balance = ? WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE wallets SET balance = ? WHERE id = ?");
             $upd->execute([$after, $wallet['id']]);
 
-            $txCode = 'VCOIN-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
-            $desc = "Cộng +" . number_format($amount, 0, ',', '.') . "đ Tiền Ảo (Demo Mua Sắm)";
-            $meta = json_encode(['virtual' => true, 'wallet_number' => $wallet['wallet_number']], JSON_UNESCAPED_UNICODE);
+            $txCode = 'ADD-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
+            $desc = "Cộng +" . number_format($amount, 0, ',', '.') . "đ trực tiếp vào Ví TAPay (chung số dư QR Pay)";
+            $meta = json_encode(['unified_wallet' => true, 'wallet_number' => $wallet['wallet_number']], JSON_UNESCAPED_UNICODE);
 
             $insTx = $pdo->prepare("
                 INSERT INTO wallet_transactions (tx_code, wallet_id, type, amount, balance_before, balance_after, status, description, metadata)
@@ -372,7 +372,8 @@ try {
 
             jsonResponse([
                 'success' => true,
-                'message' => 'Đã cộng +' . number_format($amount, 0, ',', '.') . 'đ Tiền Ảo vào ví mua sắm!',
+                'message' => 'Đã cộng +' . number_format($amount, 0, ',', '.') . 'đ vào Ví TAPay (Tổng số dư: ' . number_format($after, 0, ',', '.') . 'đ)!',
+                'balance' => $after,
                 'virtual_balance' => $after,
                 'receipt' => [
                     'tx_code' => $txCode,

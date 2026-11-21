@@ -226,15 +226,13 @@ function renderWalletUI() {
 
     setEl('walletTabBalance', state.hideWalletBalance ? '•••••••• ₫' : balText);
     setEl('walletTabCashback', cbText);
-    const virtualBalText = formatVND(state.wallet.virtual_balance || 0);
-    setEl('walletTabVirtualBalance', virtualBalText);
-    setEl('virtualModalCurrentBalance', virtualBalText);
+    setEl('virtualModalCurrentBalance', balText);
     setEl('walletTabNumber', state.wallet.wallet_number);
     setEl('walletTabHolder', state.wallet.full_name);
     setEl('walletTabTier', state.wallet.tier || 'Platinum Member');
 
-    setEl('checkoutWalletBal', formatVND(state.wallet.balance));
-    setEl('checkoutVirtualBal', virtualBalText);
+    setEl('checkoutWalletBal', balText);
+    setEl('checkoutVirtualBal', balText);
 
     setEl('statTotalIn', formatVND(state.stats.total_in));
     setEl('statTotalOut', formatVND(state.stats.total_out));
@@ -328,9 +326,9 @@ function renderTransactionsTable() {
         PAYMENT: { label: 'Thanh toán đơn', cls: 'bg-blue-50 text-[#0068ff] border-blue-200', sign: '-', color: 'text-rose-600' },
         REFUND: { label: 'Hoàn tiền về Ví', cls: 'bg-sky-50 text-sky-700 border-sky-200', sign: '+', color: 'text-[#0068ff]' },
         CASHBACK: { label: 'Thưởng Cashback', cls: 'bg-amber-50 text-amber-800 border-amber-200', sign: '+', color: 'text-amber-600' },
-        VIRTUAL_TOPUP: { label: '+ Tiền Ảo', cls: 'bg-violet-50 text-violet-700 border-violet-200', sign: '+', color: 'text-violet-600' },
-        VIRTUAL_PAYMENT: { label: 'Mua bằng Tiền Ảo', cls: 'bg-purple-50 text-purple-700 border-purple-200', sign: '-', color: 'text-purple-600' },
-        VIRTUAL_REFUND: { label: 'Hoàn Tiền Ảo', cls: 'bg-violet-50 text-violet-700 border-violet-200', sign: '+', color: 'text-violet-600' }
+        VIRTUAL_TOPUP: { label: '+ Cộng Tiền Chung', cls: 'bg-violet-50 text-violet-700 border-violet-200', sign: '+', color: 'text-emerald-600' },
+        VIRTUAL_PAYMENT: { label: 'Thanh toán nhanh', cls: 'bg-purple-50 text-purple-700 border-purple-200', sign: '-', color: 'text-rose-600' },
+        VIRTUAL_REFUND: { label: 'Hoàn tiền về Ví', cls: 'bg-violet-50 text-violet-700 border-violet-200', sign: '+', color: 'text-[#0068ff]' }
     };
 
     tbody.innerHTML = filtered.map(tx => {
@@ -1721,7 +1719,7 @@ function closeModal(id) {
 function openVirtualMoneyModal() {
     if (state.wallet) {
         const el = document.getElementById('virtualModalCurrentBalance');
-        if (el) el.textContent = formatVND(state.wallet.virtual_balance || 0);
+        if (el) el.textContent = formatVND(state.wallet.balance || 0);
     }
     openModal('virtualMoneyModal');
 }

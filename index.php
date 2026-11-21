@@ -202,7 +202,7 @@
                             </button>
                             <button onclick="openVirtualMoneyModal()" class="px-4 py-2.5 rounded-lg bg-violet-600/90 hover:bg-violet-600 text-white font-bold text-xs sm:text-sm border border-violet-300/40 transition flex items-center gap-1.5 shadow-sm">
                                 <i data-lucide="coins" class="w-4 h-4"></i>
-                                + Tiền Ảo Mua Đồ
+                                + Tiền Vào Ví
                             </button>
                             <button onclick="openTransferModal()" class="px-4 py-2.5 rounded-lg bg-black/25 hover:bg-black/35 text-white font-bold text-xs sm:text-sm border border-white/30 transition flex items-center gap-1.5">
                                 <i data-lucide="send" class="w-4 h-4"></i>
@@ -424,8 +424,8 @@
                         Nạp Tiền VietQR
                     </button>
                     <button onclick="openVirtualMoneyModal()" class="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs sm:text-sm transition flex items-center gap-2 shadow-sm">
-                        <i data-lucide="coins" class="w-4 h-4"></i>
-                        + Tiền Ảo
+                        <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                        + Tiền Vào Ví
                     </button>
                     <button onclick="openBankTransferModal()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm transition flex items-center gap-2 shadow-sm">
                         <i data-lucide="landmark" class="w-4 h-4"></i>
@@ -523,12 +523,12 @@
                         </div>
                         <div class="mt-2 flex flex-wrap items-center gap-2">
                             <div class="px-3 py-1.5 rounded-lg bg-violet-500/30 backdrop-blur-sm border border-violet-300/30 text-xs flex items-center gap-1.5">
-                                <i data-lucide="coins" class="w-3.5 h-3.5 text-violet-200"></i>
-                                Tiền Ảo Mua Đồ: <strong id="walletTabVirtualBalance" class="text-violet-100 font-number">0 ₫</strong>
+                                <i data-lucide="layers" class="w-3.5 h-3.5 text-violet-200"></i>
+                                Cộng chung QR Pay + Tiền ảo vào 1 Ví
                             </div>
                             <button type="button" onclick="openVirtualMoneyModal()" class="px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-400 text-white font-extrabold text-xs transition shadow-sm flex items-center gap-1">
                                 <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                                Cộng Tiền Ảo
+                                + Cộng Tiền Chung
                             </button>
                         </div>
                     </div>
@@ -816,20 +816,20 @@
                         </div>
                     </div>
 
-                    <!-- 1.5. Ví Tiền Ảo (Mua Sắm Demo) -->
+                    <!-- 1.5. Thanh Toán Nhanh Ví TAPay (Tiền chung QR Pay + Tiền cộng nhanh) -->
                     <div id="payCard-VIRTUAL_COIN" onclick="selectPaymentMethod('VIRTUAL_COIN')" class="payment-option-card rounded-xl p-3 flex items-center justify-between gap-3">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-                                <i data-lucide="coins" class="w-5 h-5"></i>
+                                <i data-lucide="zap" class="w-5 h-5"></i>
                             </div>
                             <div>
                                 <div class="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-                                    Ví Tiền Ảo (Mua Sắm Demo)
+                                    Thanh Toán Nhanh Ví TAPay
                                     <span class="px-1.5 py-0.5 text-[10px] rounded bg-violet-100 text-violet-700 font-bold">Không cần PIN</span>
                                 </div>
                                 <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap mt-0.5">
-                                    <span>Số dư tiền ảo: <strong id="checkoutVirtualBal" class="text-violet-600 font-number">0 ₫</strong></span>
-                                    <button type="button" onclick="event.stopPropagation(); quickAddVirtualMoney(5000000)" class="px-2 py-0.5 rounded bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-extrabold transition">+5Tr Tiền Ảo</button>
+                                    <span>Số dư chung: <strong id="checkoutVirtualBal" class="text-violet-600 font-number">0 ₫</strong></span>
+                                    <button type="button" onclick="event.stopPropagation(); quickAddVirtualMoney(5000000)" class="px-2 py-0.5 rounded bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-extrabold transition">+5Tr Vào Ví</button>
                                 </div>
                             </div>
                         </div>
@@ -1203,8 +1203,8 @@
                         <i data-lucide="coins" class="w-5 h-5"></i>
                     </div>
                     <div>
-                        <h3 class="text-base font-extrabold text-slate-800">Nạp Tiền Ảo Mua Sắm (Demo)</h3>
-                        <p class="text-xs text-slate-500">Dùng để mua đồ thử nghiệm trên TAstore Mall miễn phí</p>
+                        <h3 class="text-base font-extrabold text-slate-800">Cộng Tiền Chung Vào Ví TAPay</h3>
+                        <p class="text-xs text-slate-500">Cộng gộp trực tiếp vào số dư Ví chính cùng với tiền nạp QR Pay</p>
                     </div>
                 </div>
                 <button onclick="closeModal('virtualMoneyModal')" class="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500">
@@ -1214,12 +1214,12 @@
 
             <form onsubmit="handleAddVirtualMoneySubmit(event)" class="p-6 space-y-4">
                 <div class="p-3.5 rounded-xl bg-violet-50 border border-violet-200 flex items-center justify-between">
-                    <span class="text-xs font-bold text-slate-600">Số dư Tiền Ảo hiện có:</span>
+                    <span class="text-xs font-bold text-slate-600">Số dư Ví TAPay hiện có:</span>
                     <strong id="virtualModalCurrentBalance" class="text-lg font-black text-violet-700 font-number">0 ₫</strong>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-2">Chọn nhanh gói Tiền Ảo (+)</label>
+                    <label class="block text-xs font-bold text-slate-700 mb-2">Chọn nhanh số tiền cộng thêm (+)</label>
                     <div class="grid grid-cols-2 gap-2">
                         <button type="button" onclick="setVirtualAmount(1000000)" class="py-2.5 rounded-xl bg-slate-100 hover:bg-violet-50 border border-slate-200 hover:border-violet-400 text-xs font-extrabold text-slate-800 font-number transition">+ 1.000.000 ₫</button>
                         <button type="button" onclick="setVirtualAmount(5000000)" class="py-2.5 rounded-xl bg-violet-50 border border-violet-500 text-xs font-extrabold text-violet-700 font-number transition">+ 5.000.000 ₫</button>
@@ -1229,7 +1229,7 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Hoặc nhập số Tiền Ảo muốn cộng *</label>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Hoặc nhập số tiền muốn cộng chung vào Ví *</label>
                     <input id="virtualAmountInput" type="number" min="10000" max="100000000" step="10000" value="5000000" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-lg font-extrabold text-violet-700 font-number focus:border-violet-600 focus:outline-none">
                 </div>
 
@@ -1237,7 +1237,7 @@
                     <button type="button" onclick="closeModal('virtualMoneyModal')" class="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold">Đóng</button>
                     <button type="submit" class="px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-sm transition flex items-center gap-2 shadow-md">
                         <i data-lucide="plus-circle" class="w-4 h-4"></i>
-                        Cộng Tiền Ảo Ngay
+                        Cộng Vào Ví Ngay
                     </button>
                 </div>
             </form>

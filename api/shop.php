@@ -274,17 +274,15 @@ try {
                 $updW->execute([$balanceAfter, $newCashbackBalance, $userWallet['wallet_id']]);
                 $paymentStatus = 'PAID';
             } elseif ($paymentMethod === 'VIRTUAL_COIN') {
-                $virtualBefore = (float)$userWallet['virtual_balance'];
-                if ($virtualBefore < $finalAmount) {
+                if ($balanceBefore < $finalAmount) {
                     $pdo->rollBack();
                     jsonResponse([
                         'success' => false,
-                        'message' => 'Số dư Tiền Ảo không đủ (' . number_format($virtualBefore, 0, ',', '.') . 'đ). Hãy bấm nút "+ Tiền Ảo" để nhận thêm tiền ảo mua sắm!'
+                        'message' => 'Số dư Ví TAPay không đủ (' . number_format($balanceBefore, 0, ',', '.') . 'đ). Hãy bấm nút "+ Tiền" hoặc nạp QR Pay!'
                     ], 400);
                 }
-                $balanceBefore = $virtualBefore;
-                $balanceAfter = $virtualBefore - $finalAmount;
-                $updV = $pdo->prepare("UPDATE wallets SET virtual_balance = ? WHERE id = ?");
+                $balanceAfter = $balanceBefore - $finalAmount;
+                $updV = $pdo->prepare("UPDATE wallets SET balance = ? WHERE id = ?");
                 $updV->execute([$balanceAfter, $userWallet['wallet_id']]);
                 $paymentStatus = 'PAID';
             } elseif ($paymentMethod === 'COD') {
@@ -477,14 +475,11 @@ try {
             $cbEarned = (float)$order['cashback_earned'];
             $newCashback = max(0, (float)$wallet['cashback_balance'] - $cbEarned);
 
-            // 3. Cộng tiền hoàn vào Ví tương ứng (Tiền Ảo hoặc Ví chính) ngay lập tức
-            if ($isVirtualOrder) {
-                $updWallet = $pdo->prepare("UPDATE wallets SET virtual_balance = ? WHERE id = ?");
-                $updWallet->execute([$balanceAfter, $wallet['id']]);
-            } else {
-                $updWallet = $pdo->prepare("UPDATE wallets SET balance = ?, cashback_balance = ? WHERE id = ?");
-                $updWallet->execute([$balanceAfter, $newCashback, $wallet['id']]);
-            }
+            // 3. Cộng tiền hoàn vào Ví TAPay chính ngay lập tức
+            $balanceBefore = (float)$wallet['balance'];
+            $balanceAfter = $balanceBefore + $refundAmount;
+            $updWallet = $pdo->prepare("UPDATE wallets SET balance = ?, cashback_balance = ? WHERE id = ?");
+            $updWallet->execute([$balanceAfter, $newCashback, $wallet['id']]);
 
             // 4. Cập nhật trạng thái đơn hàng -> REFUNDED
             $nowStr = date('Y-m-d H:i:s');
