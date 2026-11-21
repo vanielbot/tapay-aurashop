@@ -389,7 +389,23 @@ const TOPUP_BANK_CONFIG = {
 let topupPollTimer = null;
 let topupLastSeenTxId = 0;
 
+function showTopupVerifyAlert(message) {
+    const box = document.getElementById('topupVerifyAlert');
+    const txt = document.getElementById('topupVerifyAlertText');
+    if (box && txt) {
+        txt.textContent = message;
+        box.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+    }
+}
+
+function hideTopupVerifyAlert() {
+    const box = document.getElementById('topupVerifyAlert');
+    if (box) box.classList.add('hidden');
+}
+
 function openTopupModal() {
+    hideTopupVerifyAlert();
     openModal('topupModal');
     updateTopupVietQR();
     startTopupPolling();
@@ -408,16 +424,26 @@ function startTopupPolling() {
         }
         try {
             await fetchWalletOverview();
+            const expectedAmount = Number(document.getElementById('topupAmountInput')?.value || 0);
             const newTopup = (state.transactions || []).find(
-                t => Number(t.id || 0) > topupLastSeenTxId && t.type === 'TOPUP'
+                t => Number(t.id || 0) > topupLastSeenTxId &&
+                     t.type === 'TOPUP' &&
+                     String(t.tx_code || '').startsWith('SEPAY-')
             );
             if (newTopup) {
+                if (Number(newTopup.amount || 0) < expectedAmount) {
+                    showTopupVerifyAlert(
+                        `Đã nhận ${formatVND(newTopup.amount)} nhưng chưa đủ ${formatVND(expectedAmount)}. Vui lòng chuyển thêm phần còn thiếu.`
+                    );
+                    return;
+                }
+                hideTopupVerifyAlert();
                 stopTopupPolling();
                 closeModal('topupModal');
                 showReceiptModal({
                     title: 'Nhận Tiền Tự Động Thành Công!',
                     amount: `+${formatVND(newTopup.amount)}`,
-                    subtitle: 'Hệ thống đã tự động cộng tiền từ SePay Webhook',
+                    subtitle: 'Hệ thống đã tự động xác nhận & cộng tiền từ SePay Webhook',
                     rows: [
                         ['Mã giao dịch', newTopup.tx_code],
                         ['Nội dung', newTopup.description],
@@ -579,33 +605,45 @@ function copyTopupRef() {
 
 async function handleTopupSubmit(e) {
     e.preventDefault();
+    hideTopupVerifyAlert();
+
     const amount = Number(document.getElementById('topupAmountInput')?.value || 0);
-    const source = document.getElementById('topupSourceSelect')?.value || 'VietQR - Techcombank (TCB)';
-    const customNote = document.getElementById('topupNoteInput')?.value.trim();
+    const source = document.getElementById('topupSourceSelect')?.value || 'VietQR - MB Bank (SePay)';
+    const submitBtn = document.getElementById('topupSubmitBtn');
+    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang kiểm tra giao dịch...`;
+        if (window.lucide) lucide.createIcons();
+    }
 
     try {
-        const res = await fetch('api/wallet.php?action=topup', {
+        const res = await fetch('api/wallet.php?action=verify_topup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 user_id: state.currentUserId,
                 amount,
                 source,
-                note: customNote || 'Nạp tiền trực tuyến qua VietQR'
+                since_tx_id: topupLastSeenTxId
             })
         });
         const data = await res.json();
         if (!data.success) {
-            showToast(data.message || 'Nạp tiền thất bại', 'error');
+            const errMsg = data.message || 'Chưa nhận được giao dịch chuyển khoản!';
+            showTopupVerifyAlert(errMsg);
+            showToast(errMsg, 'error');
             return;
         }
 
+        stopTopupPolling();
         closeModal('topupModal');
         await fetchWalletOverview();
         showReceiptModal({
-            title: 'Nạp Tiền Vào Ví Thành Công!',
+            title: 'Xác Nhận Chuyển Khoản Thành Công!',
             amount: `+${formatVND(data.receipt.amount)}`,
-            subtitle: 'Số dư Ví TAPay đã được cập nhật tức thì',
+            subtitle: 'Đã đối soát thành công giao dịch từ ngân hàng (SePay)',
             rows: [
                 ['Mã giao dịch', data.receipt.tx_code],
                 ['Nguồn tiền', data.receipt.source],
@@ -616,7 +654,15 @@ async function handleTopupSubmit(e) {
         });
         showToast(data.message, 'success');
     } catch (err) {
-        showToast('Lỗi kết nối khi nạp tiền', 'error');
+        const errMsg = 'Lỗi kết nối khi kiểm tra giao dịch ngân hàng';
+        showTopupVerifyAlert(errMsg);
+        showToast(errMsg, 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHtml;
+            if (window.lucide) lucide.createIcons();
+        }
     }
 }
 

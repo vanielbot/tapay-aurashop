@@ -120,75 +120,70 @@ try {
             break;
         }
 
+        case 'verify_topup':
         case 'topup': {
-            $amount = (float)($input['amount'] ?? 0);
-            $source = trim($input['source'] ?? 'VietQR - Ngân hàng Vietcombank');
-            $refNote = trim($input['note'] ?? 'Nạp tiền vào ví TAPay');
+            $expectedAmount = (float)($input['amount'] ?? 0);
+            $source = trim($input['source'] ?? 'VietQR - MB Bank (SePay)');
+            $sinceTxId = (int)($input['since_tx_id'] ?? 0);
 
-            if ($amount < 10000) {
-                jsonResponse(['success' => false, 'message' => 'Số tiền nạp tối thiểu là 10.000đ'], 400);
+            if ($expectedAmount < 1000) {
+                jsonResponse(['success' => false, 'message' => 'Số tiền nạp tối thiểu là 1.000đ'], 400);
             }
-            if ($amount > 500000000) {
+            if ($expectedAmount > 500000000) {
                 jsonResponse(['success' => false, 'message' => 'Số tiền nạp tối đa mỗi giao dịch là 500.000.000đ'], 400);
             }
-
-            $pdo->beginTransaction();
 
             $stmt = $pdo->prepare("SELECT id, balance, wallet_number FROM wallets WHERE user_id = ?");
             $stmt->execute([$userId]);
             $wallet = $stmt->fetch();
 
             if (!$wallet) {
-                $pdo->rollBack();
-                jsonResponse(['success' => false, 'message' => 'Không tìm thấy ví'], 404);
+                jsonResponse(['success' => false, 'message' => 'Không tìm thấy ví người dùng'], 404);
             }
 
-            $balanceBefore = (float)$wallet['balance'];
-            $balanceAfter = $balanceBefore + $amount;
-
-            $upd = $pdo->prepare("UPDATE wallets SET balance = ? WHERE id = ?");
-            $upd->execute([$balanceAfter, $wallet['id']]);
-
-            $txCode = 'TOP-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
-            $desc = "Nạp tiền vào ví từ {$source}" . ($refNote ? " ({$refNote})" : "");
-            $meta = json_encode([
-                'source' => $source,
-                'note' => $refNote,
-                'wallet_number' => $wallet['wallet_number']
-            ], JSON_UNESCAPED_UNICODE);
-
-            $insTx = $pdo->prepare("
-                INSERT INTO wallet_transactions (tx_code, wallet_id, type, amount, balance_before, balance_after, status, description, metadata)
-                VALUES (?, ?, 'TOPUP', ?, ?, ?, 'COMPLETED', ?, ?)
+            // Chỉ chấp nhận khi có giao dịch chuyển khoản thực tế từ SePay Webhook (tx_code bắt đầu bằng SEPAY-)
+            $txStmt = $pdo->prepare("
+                SELECT * FROM wallet_transactions
+                WHERE wallet_id = ?
+                  AND type = 'TOPUP'
+                  AND tx_code LIKE 'SEPAY-%'
+                  AND id > ?
+                ORDER BY id DESC
+                LIMIT 1
             ");
-            $insTx->execute([$txCode, $wallet['id'], $amount, $balanceBefore, $balanceAfter, $desc, $meta]);
+            $txStmt->execute([$wallet['id'], $sinceTxId]);
+            $matchedTx = $txStmt->fetch();
 
-            $pdo->commit();
+            if (!$matchedTx) {
+                jsonResponse([
+                    'success' => false,
+                    'error_code' => 'TRANSFER_NOT_RECEIVED',
+                    'message' => 'Lỗi: Hệ thống chưa nhận được giao dịch chuyển khoản từ ngân hàng! Vui lòng quét mã VietQR chuyển khoản thành công trước khi xác nhận.'
+                ], 400);
+            }
 
-            // Đồng bộ Supabase REST nếu có cấu hình
-            $db->syncToSupabaseRest('wallet_transactions', [
-                'tx_code' => $txCode,
-                'wallet_id' => $wallet['id'],
-                'type' => 'TOPUP',
-                'amount' => $amount,
-                'balance_before' => $balanceBefore,
-                'balance_after' => $balanceAfter,
-                'status' => 'COMPLETED',
-                'description' => $desc
-            ]);
+            $receivedAmount = (float)$matchedTx['amount'];
+            if ($receivedAmount < $expectedAmount) {
+                jsonResponse([
+                    'success' => false,
+                    'error_code' => 'INSUFFICIENT_AMOUNT',
+                    'message' => 'Lỗi: Đã nhận ' . number_format($receivedAmount, 0, ',', '.') . 'đ nhưng chưa đủ số tiền yêu cầu (' . number_format($expectedAmount, 0, ',', '.') . 'đ). Vui lòng chuyển thêm phần còn thiếu!'
+                ], 400);
+            }
 
+            $meta = !empty($matchedTx['metadata']) ? json_decode($matchedTx['metadata'], true) : [];
             jsonResponse([
                 'success' => true,
-                'message' => 'Nạp tiền vào ví thành công!',
+                'message' => 'Xác nhận chuyển khoản thành công! Tiền đã được cộng vào Ví TAPay.',
                 'receipt' => [
-                    'tx_code' => $txCode,
+                    'tx_code' => $matchedTx['tx_code'],
                     'type' => 'TOPUP',
-                    'amount' => $amount,
-                    'balance_before' => $balanceBefore,
-                    'balance_after' => $balanceAfter,
-                    'source' => $source,
-                    'description' => $desc,
-                    'created_at' => date('d/m/Y H:i:s')
+                    'amount' => $receivedAmount,
+                    'balance_before' => (float)$matchedTx['balance_before'],
+                    'balance_after' => (float)$matchedTx['balance_after'],
+                    'source' => $meta['source'] ?? $source,
+                    'description' => $matchedTx['description'],
+                    'created_at' => $matchedTx['created_at'] ?? date('d/m/Y H:i:s')
                 ]
             ]);
             break;
