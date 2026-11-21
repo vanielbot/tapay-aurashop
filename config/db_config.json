@@ -1,0 +1,15 @@
+{
+    "active_mode": "auto",
+    "supabase_url": "",
+    "supabase_anon_key": "",
+    "supabase_db_host": "",
+    "supabase_db_port": "5432",
+    "supabase_db_name": "postgres",
+    "supabase_db_user": "postgres",
+    "supabase_db_pass": "",
+    "mysql_host": "127.0.0.1",
+    "mysql_port": "3306",
+    "mysql_db": "aurashop_db",
+    "mysql_user": "root",
+    "mysql_pass": ""
+}
