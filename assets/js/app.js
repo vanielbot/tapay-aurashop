@@ -226,11 +226,15 @@ function renderWalletUI() {
 
     setEl('walletTabBalance', state.hideWalletBalance ? '•••••••• ₫' : balText);
     setEl('walletTabCashback', cbText);
+    const virtualBalText = formatVND(state.wallet.virtual_balance || 0);
+    setEl('walletTabVirtualBalance', virtualBalText);
+    setEl('virtualModalCurrentBalance', virtualBalText);
     setEl('walletTabNumber', state.wallet.wallet_number);
     setEl('walletTabHolder', state.wallet.full_name);
     setEl('walletTabTier', state.wallet.tier || 'Platinum Member');
 
     setEl('checkoutWalletBal', formatVND(state.wallet.balance));
+    setEl('checkoutVirtualBal', virtualBalText);
 
     setEl('statTotalIn', formatVND(state.stats.total_in));
     setEl('statTotalOut', formatVND(state.stats.total_out));
@@ -323,7 +327,10 @@ function renderTransactionsTable() {
         TRANSFER_OUT: { label: 'Chuyển tiền P2P', cls: 'bg-orange-50 text-[#ee4d2d] border-orange-200', sign: '-', color: 'text-rose-600' },
         PAYMENT: { label: 'Thanh toán đơn', cls: 'bg-blue-50 text-[#0068ff] border-blue-200', sign: '-', color: 'text-rose-600' },
         REFUND: { label: 'Hoàn tiền về Ví', cls: 'bg-sky-50 text-sky-700 border-sky-200', sign: '+', color: 'text-[#0068ff]' },
-        CASHBACK: { label: 'Thưởng Cashback', cls: 'bg-amber-50 text-amber-800 border-amber-200', sign: '+', color: 'text-amber-600' }
+        CASHBACK: { label: 'Thưởng Cashback', cls: 'bg-amber-50 text-amber-800 border-amber-200', sign: '+', color: 'text-amber-600' },
+        VIRTUAL_TOPUP: { label: '+ Tiền Ảo', cls: 'bg-violet-50 text-violet-700 border-violet-200', sign: '+', color: 'text-violet-600' },
+        VIRTUAL_PAYMENT: { label: 'Mua bằng Tiền Ảo', cls: 'bg-purple-50 text-purple-700 border-purple-200', sign: '-', color: 'text-purple-600' },
+        VIRTUAL_REFUND: { label: 'Hoàn Tiền Ảo', cls: 'bg-violet-50 text-violet-700 border-violet-200', sign: '+', color: 'text-violet-600' }
     };
 
     tbody.innerHTML = filtered.map(tx => {
@@ -1332,7 +1339,7 @@ function applyVoucherCode() {
 function selectPaymentMethod(method) {
     state.selectedPaymentMethod = method;
 
-    ['WALLET', 'COD', 'BANK_TRANSFER', 'PAY_LATER'].forEach(m => {
+    ['WALLET', 'VIRTUAL_COIN', 'COD', 'BANK_TRANSFER', 'PAY_LATER'].forEach(m => {
         const card = document.getElementById(`payCard-${m}`);
         if (!card) return;
         const dot = card.querySelector('.pay-radio-dot');
@@ -1357,6 +1364,8 @@ function selectPaymentMethod(method) {
     if (method === 'PAY_LATER') {
         showToast('Phương thức "Mua trước trả sau (Pay Later)" hiện chưa cập nhật!', 'warning');
         if (submitBtnText) submitBtnText.textContent = 'Trả Sau Hiện Chưa Cập Nhật';
+    } else if (method === 'VIRTUAL_COIN') {
+        if (submitBtnText) submitBtnText.textContent = 'Thanh Toán Bằng Tiền Ảo';
     } else if (method === 'COD') {
         if (submitBtnText) submitBtnText.textContent = 'Đặt Hàng COD Ngay';
     } else if (method === 'BANK_TRANSFER') {
@@ -1706,10 +1715,61 @@ function closeModal(id) {
     if (id === 'topupModal') stopTopupPolling();
 }
 
+// ============================================================================
+// VIRTUAL MONEY (TIỀN ẢO DEMO MUA SẮM)
+// ============================================================================
+function openVirtualMoneyModal() {
+    if (state.wallet) {
+        const el = document.getElementById('virtualModalCurrentBalance');
+        if (el) el.textContent = formatVND(state.wallet.virtual_balance || 0);
+    }
+    openModal('virtualMoneyModal');
+}
+
+function setVirtualAmount(amt) {
+    const inp = document.getElementById('virtualAmountInput');
+    if (inp) inp.value = amt;
+}
+
+async function quickAddVirtualMoney(amt = 5000000) {
+    await executeAddVirtualMoney(amt, false);
+}
+
+async function handleAddVirtualMoneySubmit(e) {
+    e.preventDefault();
+    const amt = Number(document.getElementById('virtualAmountInput')?.value || 5000000);
+    await executeAddVirtualMoney(amt, true);
+}
+
+async function executeAddVirtualMoney(amount, closeAfter = false) {
+    try {
+        const res = await fetch('api/wallet.php?action=add_virtual_money', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: state.currentUserId,
+                amount
+            })
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showToast(data.message || 'Cộng tiền ảo thất bại', 'error');
+            return;
+        }
+        await fetchWalletOverview();
+        if (closeAfter) {
+            closeModal('virtualMoneyModal');
+        }
+        showToast(data.message, 'success');
+    } catch (e) {
+        showToast('Lỗi kết nối khi cộng tiền ảo', 'error');
+    }
+}
+
 // Accessibility: Close open modals on Escape key
 document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    ['topupModal', 'transferModal', 'receiptModal', 'createProductModal', 'refundModal', 'dbConfigModal'].forEach(id => {
+    ['topupModal', 'virtualMoneyModal', 'transferModal', 'receiptModal', 'createProductModal', 'refundModal', 'dbConfigModal'].forEach(id => {
         const el = document.getElementById(id);
         if (el && !el.classList.contains('hidden')) closeModal(id);
     });

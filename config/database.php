@@ -199,6 +199,7 @@ class DatabaseManager {
             $stmt = $this->pdo->query("SELECT COUNT(*) as cnt FROM users");
             $row = $stmt->fetch();
             if ($row && (int)$row['cnt'] > 0) {
+                $this->ensureVirtualBalanceColumn();
                 return;
             }
         } catch (Exception $e) {
@@ -240,6 +241,7 @@ class DatabaseManager {
                 wallet_number VARCHAR(30) UNIQUE NOT NULL,
                 balance DECIMAL(15,2) NOT NULL DEFAULT 0,
                 cashback_balance DECIMAL(15,2) NOT NULL DEFAULT 0,
+                virtual_balance DECIMAL(15,2) NOT NULL DEFAULT 10000000,
                 currency VARCHAR(10) NOT NULL DEFAULT 'VND',
                 status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -348,6 +350,7 @@ class DatabaseManager {
                 wallet_number TEXT UNIQUE NOT NULL,
                 balance REAL NOT NULL DEFAULT 0,
                 cashback_balance REAL NOT NULL DEFAULT 0,
+                virtual_balance REAL NOT NULL DEFAULT 10000000,
                 currency TEXT NOT NULL DEFAULT 'VND',
                 status TEXT NOT NULL DEFAULT 'ACTIVE',
                 updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -432,6 +435,21 @@ class DatabaseManager {
 
         foreach ($queries as $q) {
             $this->pdo->exec($q);
+        }
+    }
+
+    private function ensureVirtualBalanceColumn() {
+        try {
+            $this->pdo->query("SELECT virtual_balance FROM wallets LIMIT 1");
+        } catch (Throwable $e) {
+            try {
+                if ($this->driver === 'sqlite') {
+                    $this->pdo->exec("ALTER TABLE wallets ADD COLUMN virtual_balance REAL NOT NULL DEFAULT 10000000");
+                } else {
+                    $this->pdo->exec("ALTER TABLE wallets ADD COLUMN virtual_balance DECIMAL(15,2) NOT NULL DEFAULT 10000000");
+                }
+            } catch (Throwable $ignored) {
+            }
         }
     }
 

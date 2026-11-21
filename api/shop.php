@@ -178,7 +178,8 @@ try {
             // 1. Lấy thông tin người dùng & ví
             $userStmt = $pdo->prepare("
                 SELECT u.id, u.full_name, u.phone, u.pin_code,
-                       w.id as wallet_id, w.wallet_number, w.balance, w.cashback_balance
+                       w.id as wallet_id, w.wallet_number, w.balance, w.cashback_balance,
+                       COALESCE(w.virtual_balance, 0) as virtual_balance
                 FROM users u
                 JOIN wallets w ON w.user_id = u.id
                 WHERE u.id = ?
@@ -272,6 +273,20 @@ try {
                 $updW = $pdo->prepare("UPDATE wallets SET balance = ?, cashback_balance = ? WHERE id = ?");
                 $updW->execute([$balanceAfter, $newCashbackBalance, $userWallet['wallet_id']]);
                 $paymentStatus = 'PAID';
+            } elseif ($paymentMethod === 'VIRTUAL_COIN') {
+                $virtualBefore = (float)$userWallet['virtual_balance'];
+                if ($virtualBefore < $finalAmount) {
+                    $pdo->rollBack();
+                    jsonResponse([
+                        'success' => false,
+                        'message' => 'Số dư Tiền Ảo không đủ (' . number_format($virtualBefore, 0, ',', '.') . 'đ). Hãy bấm nút "+ Tiền Ảo" để nhận thêm tiền ảo mua sắm!'
+                    ], 400);
+                }
+                $balanceBefore = $virtualBefore;
+                $balanceAfter = $virtualBefore - $finalAmount;
+                $updV = $pdo->prepare("UPDATE wallets SET virtual_balance = ? WHERE id = ?");
+                $updV->execute([$balanceAfter, $userWallet['wallet_id']]);
+                $paymentStatus = 'PAID';
             } elseif ($paymentMethod === 'COD') {
                 $paymentStatus = 'COD_PENDING';
                 $orderStatus = 'PROCESSING';
@@ -327,27 +342,33 @@ try {
                 $updStock->execute([$vi['quantity'], $vi['quantity'], $vi['product_id']]);
             }
 
-            // 7. Nếu thanh toán bằng Ví điện tử, ghi lịch sử giao dịch PAYMENT
+            // 7. Nếu thanh toán bằng Ví điện tử hoặc Tiền Ảo, ghi lịch sử giao dịch
             $txCode = null;
-            if ($paymentMethod === 'WALLET') {
-                $txCode = 'PAY-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
-                $txDesc = "Thanh toán đơn hàng #{$orderCode}" . ($cashbackEarned > 0 ? " (+Hoàn tiền " . number_format($cashbackEarned, 0, ',', '.') . "đ)" : "");
+            if ($paymentMethod === 'WALLET' || $paymentMethod === 'VIRTUAL_COIN') {
+                $isVirtual = ($paymentMethod === 'VIRTUAL_COIN');
+                $txCode = ($isVirtual ? 'VPAY-' : 'PAY-') . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
+                $txType = $isVirtual ? 'VIRTUAL_PAYMENT' : 'PAYMENT';
+                $txDesc = $isVirtual
+                    ? "Mua sắm bằng Tiền Ảo (#{$orderCode})"
+                    : "Thanh toán đơn hàng #{$orderCode}" . ($cashbackEarned > 0 ? " (+Hoàn tiền " . number_format($cashbackEarned, 0, ',', '.') . "đ)" : "");
                 $txMeta = json_encode([
                     'order_code' => $orderCode,
                     'order_id' => $orderId,
                     'cashback_earned' => $cashbackEarned,
-                    'items_count' => count($validatedItems)
+                    'items_count' => count($validatedItems),
+                    'virtual' => $isVirtual
                 ], JSON_UNESCAPED_UNICODE);
 
                 $insTx = $pdo->prepare("
                     INSERT INTO wallet_transactions
                     (tx_code, wallet_id, order_id, type, amount, balance_before, balance_after, status, description, metadata)
-                    VALUES (?, ?, ?, 'PAYMENT', ?, ?, ?, 'COMPLETED', ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?, ?)
                 ");
                 $insTx->execute([
                     $txCode,
                     $userWallet['wallet_id'],
                     $orderId,
+                    $txType,
                     $finalAmount,
                     $balanceBefore,
                     $balanceAfter,
@@ -360,6 +381,7 @@ try {
 
             $methodLabels = [
                 'WALLET' => 'Ví điện tử TAPay',
+                'VIRTUAL_COIN' => 'Ví Tiền Ảo (Mua Sắm Demo)',
                 'COD' => 'Thanh toán khi nhận hàng (COD)',
                 'BANK_TRANSFER' => 'Chuyển khoản Ngân hàng (VietQR)'
             ];
@@ -437,7 +459,7 @@ try {
             }
 
             // 2. Lấy ví người dùng để cộng tiền hoàn
-            $wStmt = $pdo->prepare("SELECT id, balance, cashback_balance, wallet_number FROM wallets WHERE user_id = ?");
+            $wStmt = $pdo->prepare("SELECT id, balance, cashback_balance, COALESCE(virtual_balance, 0) as virtual_balance, wallet_number FROM wallets WHERE user_id = ?");
             $wStmt->execute([$userId]);
             $wallet = $wStmt->fetch();
 
@@ -447,16 +469,22 @@ try {
             }
 
             $refundAmount = (float)$order['final_amount'];
-            $balanceBefore = (float)$wallet['balance'];
+            $isVirtualOrder = ($order['payment_method'] === 'VIRTUAL_COIN');
+            $balanceBefore = $isVirtualOrder ? (float)$wallet['virtual_balance'] : (float)$wallet['balance'];
             $balanceAfter = $balanceBefore + $refundAmount;
 
             // Khấu trừ lại cashback đã tặng của đơn này (nếu có)
             $cbEarned = (float)$order['cashback_earned'];
             $newCashback = max(0, (float)$wallet['cashback_balance'] - $cbEarned);
 
-            // 3. Cộng tiền hoàn vào Ví điện tử ngay lập tức
-            $updWallet = $pdo->prepare("UPDATE wallets SET balance = ?, cashback_balance = ? WHERE id = ?");
-            $updWallet->execute([$balanceAfter, $newCashback, $wallet['id']]);
+            // 3. Cộng tiền hoàn vào Ví tương ứng (Tiền Ảo hoặc Ví chính) ngay lập tức
+            if ($isVirtualOrder) {
+                $updWallet = $pdo->prepare("UPDATE wallets SET virtual_balance = ? WHERE id = ?");
+                $updWallet->execute([$balanceAfter, $wallet['id']]);
+            } else {
+                $updWallet = $pdo->prepare("UPDATE wallets SET balance = ?, cashback_balance = ? WHERE id = ?");
+                $updWallet->execute([$balanceAfter, $newCashback, $wallet['id']]);
+            }
 
             // 4. Cập nhật trạng thái đơn hàng -> REFUNDED
             $nowStr = date('Y-m-d H:i:s');
@@ -489,25 +517,30 @@ try {
             ");
             $insRefund->execute([$refundCode, $orderId, $userId, $refundAmount, $reason]);
 
-            // 6. Ghi lịch sử biến động số dư REFUND
-            $txCode = 'REF-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
-            $txDesc = "Hoàn tiền 100% đơn hàng #{$order['order_code']} về Ví TAPay (Lý do: {$reason})";
+            // 6. Ghi lịch sử biến động số dư REFUND / VIRTUAL_REFUND
+            $txCode = ($isVirtualOrder ? 'VREF-' : 'REF-') . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
+            $txType = $isVirtualOrder ? 'VIRTUAL_REFUND' : 'REFUND';
+            $txDesc = $isVirtualOrder
+                ? "Hoàn tiền 100% đơn hàng #{$order['order_code']} về Ví Tiền Ảo (Lý do: {$reason})"
+                : "Hoàn tiền 100% đơn hàng #{$order['order_code']} về Ví TAPay (Lý do: {$reason})";
             $txMeta = json_encode([
                 'refund_code' => $refundCode,
                 'order_code' => $order['order_code'],
                 'order_id' => $orderId,
-                'reason' => $reason
+                'reason' => $reason,
+                'virtual' => $isVirtualOrder
             ], JSON_UNESCAPED_UNICODE);
 
             $insTx = $pdo->prepare("
                 INSERT INTO wallet_transactions
                 (tx_code, wallet_id, order_id, type, amount, balance_before, balance_after, status, description, metadata)
-                VALUES (?, ?, ?, 'REFUND', ?, ?, ?, 'COMPLETED', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'COMPLETED', ?, ?)
             ");
             $insTx->execute([
                 $txCode,
                 $wallet['id'],
                 $orderId,
+                $txType,
                 $refundAmount,
                 $balanceBefore,
                 $balanceAfter,

@@ -24,7 +24,7 @@ try {
             // Lấy danh sách tất cả users để hỗ trợ Quick Account Switcher & gợi ý chuyển khoản
             $allUsersStmt = $pdo->query("
                 SELECT u.id, u.full_name, u.email, u.phone, u.avatar, u.role, u.tier,
-                       w.wallet_number, w.balance, w.cashback_balance
+                       w.wallet_number, w.balance, w.cashback_balance, COALESCE(w.virtual_balance, 0) as virtual_balance
                 FROM users u
                 JOIN wallets w ON w.user_id = u.id
                 ORDER BY u.id ASC
@@ -34,7 +34,8 @@ try {
             // Lấy thông tin user + ví hiện tại
             $stmt = $pdo->prepare("
                 SELECT u.id, u.full_name, u.email, u.phone, u.avatar, u.role, u.tier, u.pin_code,
-                       w.id as wallet_id, w.wallet_number, w.balance, w.cashback_balance, w.currency, w.status
+                       w.id as wallet_id, w.wallet_number, w.balance, w.cashback_balance,
+                       COALESCE(w.virtual_balance, 0) as virtual_balance, w.currency, w.status
                 FROM users u
                 JOIN wallets w ON w.user_id = u.id
                 WHERE u.id = ?
@@ -67,7 +68,7 @@ try {
                 $amt = (float)$tx['amount'];
                 if (in_array($tx['type'], ['TOPUP', 'TRANSFER_IN', 'REFUND', 'CASHBACK'])) {
                     $stats['total_in'] += $amt;
-                } else {
+                } elseif (!in_array($tx['type'], ['VIRTUAL_TOPUP', 'VIRTUAL_PAYMENT', 'VIRTUAL_REFUND'])) {
                     $stats['total_out'] += $amt;
                 }
                 if ($tx['type'] === 'REFUND') {
@@ -328,6 +329,56 @@ try {
                     'recipient_wallet' => $recipient['wallet_number'],
                     'message' => $cleanMsg,
                     'balance_after' => $senderAfter,
+                    'created_at' => date('d/m/Y H:i:s')
+                ]
+            ]);
+            break;
+        }
+
+        case 'add_virtual_money': {
+            $amount = (float)($input['amount'] ?? 5000000);
+            if ($amount < 10000 || $amount > 100000000) {
+                jsonResponse(['success' => false, 'message' => 'Số tiền ảo mỗi lần cộng từ 10.000đ đến 100.000.000đ'], 400);
+            }
+
+            $pdo->beginTransaction();
+
+            $stmt = $pdo->prepare("SELECT id, COALESCE(virtual_balance, 0) as virtual_balance, wallet_number FROM wallets WHERE user_id = ?");
+            $stmt->execute([$userId]);
+            $wallet = $stmt->fetch();
+
+            if (!$wallet) {
+                $pdo->rollBack();
+                jsonResponse(['success' => false, 'message' => 'Không tìm thấy ví người dùng'], 404);
+            }
+
+            $before = (float)$wallet['virtual_balance'];
+            $after = $before + $amount;
+
+            $upd = $pdo->prepare("UPDATE wallets SET virtual_balance = ? WHERE id = ?");
+            $upd->execute([$after, $wallet['id']]);
+
+            $txCode = 'VCOIN-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 8));
+            $desc = "Cộng +" . number_format($amount, 0, ',', '.') . "đ Tiền Ảo (Demo Mua Sắm)";
+            $meta = json_encode(['virtual' => true, 'wallet_number' => $wallet['wallet_number']], JSON_UNESCAPED_UNICODE);
+
+            $insTx = $pdo->prepare("
+                INSERT INTO wallet_transactions (tx_code, wallet_id, type, amount, balance_before, balance_after, status, description, metadata)
+                VALUES (?, ?, 'VIRTUAL_TOPUP', ?, ?, ?, 'COMPLETED', ?, ?)
+            ");
+            $insTx->execute([$txCode, $wallet['id'], $amount, $before, $after, $desc, $meta]);
+
+            $pdo->commit();
+
+            jsonResponse([
+                'success' => true,
+                'message' => 'Đã cộng +' . number_format($amount, 0, ',', '.') . 'đ Tiền Ảo vào ví mua sắm!',
+                'virtual_balance' => $after,
+                'receipt' => [
+                    'tx_code' => $txCode,
+                    'amount' => $amount,
+                    'balance_before' => $before,
+                    'balance_after' => $after,
                     'created_at' => date('d/m/Y H:i:s')
                 ]
             ]);
